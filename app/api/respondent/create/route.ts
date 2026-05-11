@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getDb } from "@/lib/cloudbase";
 import { assignCollegeLabels } from "@/lib/colleges";
+import { isAboveThreshold } from "@/lib/threshold";
 import {
   generateRespondentId,
   generateRandSeed,
@@ -13,16 +14,36 @@ import { COOKIE_NAME, COOKIE_MAX_AGE } from "@/lib/constants";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { session_id, province, total_score, subject_track, version, colleges } = body as {
+    const {
+      session_id,
+      province,
+      total_score,
+      subject_track,
+      version,
+      colleges,
+      school_id,
+      class_id,
+      student_seq,
+    } = body as {
       session_id: string;
       province: string;
       total_score?: number;
       subject_track: string;
       version?: string;
       colleges?: string[];
+      school_id?: string;
+      class_id?: string;
+      student_seq?: string;
     };
 
+    const resolvedVersion = (version ?? "gaokao_senior") as "gaokao_senior" | "rising_senior";
+
     if (!session_id || !province || !subject_track) {
+      return NextResponse.json({ error: "missing_required_fields" }, { status: 400 });
+    }
+
+    // gaokao_senior requires a score
+    if (resolvedVersion === "gaokao_senior" && total_score === undefined) {
       return NextResponse.json({ error: "missing_required_fields" }, { status: 400 });
     }
 
@@ -40,22 +61,32 @@ export async function POST(req: NextRequest) {
       req.headers.get("x-real-ip") ??
       "";
 
+    // Threshold check for gaokao_senior
+    let is_filtered = false;
+    if (resolvedVersion === "gaokao_senior" && total_score !== undefined) {
+      const above = await isAboveThreshold(province, subject_track, total_score);
+      if (!above) is_filtered = true;
+    }
+
     const doc = {
       respondent_id,
       session_id,
-      version: (version ?? "gaokao_senior") as "gaokao_senior" | "rising_senior",
+      version: resolvedVersion,
       treatment_group,
       r1_block_order,
       province,
       ...(total_score !== undefined && { total_score }),
       subject_track,
+      ...(school_id !== undefined && { school_id }),
+      ...(class_id !== undefined && { class_id }),
+      ...(student_seq !== undefined && { student_seq }),
       device_type,
       user_agent: ua,
       ip_address,
       started_at: new Date().toISOString(),
       current_page: 0,
       is_completed: false,
-      is_filtered: false,
+      is_filtered,
       rand_seed,
     };
 
@@ -77,7 +108,7 @@ export async function POST(req: NextRequest) {
       sameSite: "lax",
     });
 
-    return NextResponse.json({ respondent_id, treatment_group, r1_block_order });
+    return NextResponse.json({ respondent_id, treatment_group, r1_block_order, filtered: is_filtered });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

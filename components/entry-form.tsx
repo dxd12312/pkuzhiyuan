@@ -44,6 +44,7 @@ export default function EntryForm({
   // rising_senior fields
   const [classId, setClassId] = useState("");
   const [studentSeq, setStudentSeq] = useState("");
+  const [risingSubjectTrack, setRisingSubjectTrack] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -57,8 +58,8 @@ export default function EntryForm({
         return;
       }
     } else {
-      if (!classId || !studentSeq) {
-        setError("请填写班级和学生编号");
+      if (!classId || !studentSeq || !risingSubjectTrack) {
+        setError("请填写班级、学生编号和科目类别");
         return;
       }
     }
@@ -81,7 +82,7 @@ export default function EntryForm({
               session_id: sessionId,
               version,
               province: sessionData?.province ?? "",
-              subject_track: "combined",
+              subject_track: risingSubjectTrack,
               class_id: classId,
               student_seq: studentSeq,
             };
@@ -149,6 +150,30 @@ export default function EntryForm({
             value={studentSeq}
             onChange={(e) => setStudentSeq(e.target.value)}
           />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label>科目类别</Label>
+          <RadioGroup
+            value={risingSubjectTrack}
+            onValueChange={setRisingSubjectTrack}
+            className="gap-2"
+          >
+            {SUBJECT_TRACKS.map((track) => (
+              <div key={track.value} className="flex items-center gap-2">
+                <RadioGroupItem
+                  value={track.value}
+                  id={`rising_track_${track.value}`}
+                />
+                <Label
+                  htmlFor={`rising_track_${track.value}`}
+                  className="font-normal cursor-pointer"
+                >
+                  {track.label}
+                </Label>
+              </div>
+            ))}
+          </RadioGroup>
         </div>
 
         {error && <p className="text-sm text-red-500">{error}</p>}

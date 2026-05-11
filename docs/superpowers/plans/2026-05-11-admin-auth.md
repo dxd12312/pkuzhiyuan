@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a complete admin authentication system at /admin/* with login, session management, rate limiting, and a dashboard landing page.
+**Goal:** Implement complete admin auth: JWT cookie session, login/logout API routes, Edge middleware route guards, and admin dashboard layout.
 
 **Architecture:** bcryptjs password verification against CloudBase `admins` collection; JWT session token in httpOnly `admin_session` cookie signed with `ADMIN_SESSION_SECRET`; per-IP rate limiting tracked in CloudBase `login_attempts` collection; separate `app/admin/layout.tsx` guards all admin routes server-side.
 
