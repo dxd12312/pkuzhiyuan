@@ -34,3 +34,4 @@ export async function kvGetAll<T>(prefix: string): Promise<T[]> {
   const rows = await sql`SELECT data FROM kv WHERE key LIKE ${prefix + "%"} ORDER BY key`;
   return rows.map((r) => r.data as T);
 }
+// Neon PostgreSQL (Singapore)
