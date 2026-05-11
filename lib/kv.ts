@@ -1,44 +1,36 @@
-declare const kv: {
-  get(key: string, options?: { type?: string }): Promise<unknown>;
-  put(key: string, value: string): Promise<void>;
-  delete(key: string): Promise<void>;
-  list(options?: { prefix?: string; limit?: number; cursor?: string }): Promise<{
-    complete: boolean;
-    cursor: string | null;
-    keys: { key: string }[];
-  }>;
-};
+import { neon } from "@neondatabase/serverless";
+
+function getSql() {
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL not configured");
+  return neon(url);
+}
 
 export async function kvGet<T>(key: string): Promise<T | null> {
-  const val = await kv.get(key, { type: "json" });
-  return (val as T) ?? null;
+  const sql = getSql();
+  const rows = await sql`SELECT data FROM kv WHERE key = ${key}`;
+  if (rows.length === 0) return null;
+  return rows[0].data as T;
 }
 
 export async function kvPut(key: string, data: unknown): Promise<void> {
-  await kv.put(key, JSON.stringify(data));
+  const sql = getSql();
+  await sql`INSERT INTO kv (key, data, updated_at) VALUES (${key}, ${JSON.stringify(data)}::jsonb, now()) ON CONFLICT (key) DO UPDATE SET data = ${JSON.stringify(data)}::jsonb, updated_at = now()`;
 }
 
 export async function kvDelete(key: string): Promise<void> {
-  await kv.delete(key);
+  const sql = getSql();
+  await sql`DELETE FROM kv WHERE key = ${key}`;
 }
 
 export async function kvList(prefix: string): Promise<string[]> {
-  const allKeys: string[] = [];
-  let cursor: string | undefined;
-  do {
-    const result = await kv.list({ prefix, limit: 256, cursor });
-    allKeys.push(...result.keys.map((k) => k.key));
-    cursor = result.complete ? undefined : (result.cursor ?? undefined);
-  } while (cursor);
-  return allKeys;
+  const sql = getSql();
+  const rows = await sql`SELECT key FROM kv WHERE key LIKE ${prefix + "%"} ORDER BY key`;
+  return rows.map((r) => r.key as string);
 }
 
 export async function kvGetAll<T>(prefix: string): Promise<T[]> {
-  const keys = await kvList(prefix);
-  const results: T[] = [];
-  for (const key of keys) {
-    const val = await kvGet<T>(key);
-    if (val) results.push(val);
-  }
-  return results;
+  const sql = getSql();
+  const rows = await sql`SELECT data FROM kv WHERE key LIKE ${prefix + "%"} ORDER BY key`;
+  return rows.map((r) => r.data as T);
 }

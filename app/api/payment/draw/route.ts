@@ -6,7 +6,6 @@ import { drawLottery } from "@/lib/lottery";
 import type { BlockResponse, Respondent } from "@/lib/types";
 import type { Payment } from "@/lib/types";
 
-export const runtime = "edge";
 
 export async function POST() {
   try {

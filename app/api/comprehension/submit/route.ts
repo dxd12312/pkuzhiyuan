@@ -4,7 +4,6 @@ import { kvGet, kvPut } from "@/lib/kv";
 import { COOKIE_NAME } from "@/lib/constants";
 import type { CellId } from "@/lib/types";
 
-export const runtime = 'edge';
 
 // Numeric value each option label represents (in 元).
 const OPTION_VALUES: Record<string, number> = {

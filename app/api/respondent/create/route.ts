@@ -11,7 +11,6 @@ import {
 } from "@/lib/randomize";
 import { COOKIE_NAME, COOKIE_MAX_AGE } from "@/lib/constants";
 
-export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {

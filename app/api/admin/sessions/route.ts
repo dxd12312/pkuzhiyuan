@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import { kvGetAll, kvPut } from "@/lib/kv";
 import type { Session } from "@/lib/types";
 
-export const runtime = "edge";
 
 const ADMIN_SESSION_COOKIE = "admin_session";
 const BASE_URL = "https://www.pkuzhiyuan.com";

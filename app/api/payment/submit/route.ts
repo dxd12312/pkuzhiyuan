@@ -4,7 +4,6 @@ import { kvGet, kvPut } from "@/lib/kv";
 import { COOKIE_NAME } from "@/lib/constants";
 import type { Payment } from "@/lib/types";
 
-export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {

@@ -7,7 +7,6 @@ import { buildFallbackReport } from "@/lib/report-fallback";
 import type { Respondent, BlockResponse } from "@/lib/types";
 import type { DiagnosticResponse, AIReport } from "@/lib/types";
 
-export const runtime = "edge";
 
 const AI_TIMEOUT_MS = 10_000;
 

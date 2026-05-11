@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import { kvGet } from "@/lib/kv";
 import { COOKIE_NAME } from "@/lib/constants";
 
-export const runtime = 'edge';
 
 export async function GET() {
   try {

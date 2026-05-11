@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
 import { kvGet, kvPut, kvDelete } from "@/lib/kv";
 
-export const runtime = "edge";
 
 const MAX_ATTEMPTS = 10;
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutes

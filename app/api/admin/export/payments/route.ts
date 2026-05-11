@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import { kvGetAll } from "@/lib/kv";
 import { toCsv } from "@/lib/csv";
 
-export const runtime = "edge";
 
 const ADMIN_SESSION_COOKIE = "admin_session";
 

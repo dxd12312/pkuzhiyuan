@@ -4,7 +4,6 @@ import { kvGetAll } from "@/lib/kv";
 import { toCsv } from "@/lib/csv";
 import type { Respondent } from "@/lib/types";
 
-export const runtime = "edge";
 
 const ADMIN_SESSION_COOKIE = "admin_session";
 

@@ -6,7 +6,6 @@ import { COOKIE_NAME } from "@/lib/constants";
 import type { CellId } from "@/lib/types";
 
 
-export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {
