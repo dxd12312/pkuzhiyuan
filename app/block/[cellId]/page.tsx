@@ -1,14 +1,11 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import SurveyShell from "@/components/survey-shell";
 import { MplBlockClient } from "@/components/mpl-block-client";
+import { getRespondentFromCookie } from "@/lib/session";
+import { getBlockSequence } from "@/lib/mpl";
 import type { CellId } from "@/lib/types";
 
 const VALID_CELL_IDS: CellId[] = ["r1_low", "r1_high", "r4_low"];
-const CELL_STEP: Record<CellId, number> = {
-  r1_low: 1,
-  r1_high: 2,
-  r4_low: 3,
-};
 
 interface Props {
   params: Promise<{ cellId: string }>;
@@ -21,13 +18,19 @@ export default async function BlockPage({ params }: Props) {
     notFound();
   }
 
+  const respondent = await getRespondentFromCookie();
+  if (!respondent) {
+    redirect("/");
+  }
+
   const cell = cellId as CellId;
-  const step = CELL_STEP[cell];
+  const blockSequence = getBlockSequence(respondent.r1_block_order);
+  const step = blockSequence.indexOf(cell) + 1;
+  const showHint = respondent.treatment_group === "treatment";
 
   return (
-    <SurveyShell step={step} totalSteps={3}>
-      {/* showHint driven by treatment group — MVP defaults to false */}
-      <MplBlockClient cellId={cell} showHint={false} />
+    <SurveyShell step={step} totalSteps={blockSequence.length}>
+      <MplBlockClient cellId={cell} showHint={showHint} blockSequence={blockSequence} />
     </SurveyShell>
   );
 }

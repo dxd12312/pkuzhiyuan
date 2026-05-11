@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { validateSingleCrossing, TREATMENT_HINTS } from "@/lib/mpl";
 import type { CellId, MplRow } from "@/lib/types";
+import type { CollegeLabels } from "@/lib/colleges";
 
 interface MplTableProps {
   cellId: CellId;
@@ -14,6 +15,7 @@ interface MplTableProps {
   showHint: boolean;
   onSubmit: (choices: ("A" | "B")[]) => void;
   onInvalidAttempt?: (pattern: string) => void;
+  collegeLabels?: CollegeLabels;
 }
 
 const CELL_LABEL: Record<CellId, string> = {
@@ -22,7 +24,9 @@ const CELL_LABEL: Record<CellId, string> = {
   r4_low: "第四志愿（低分段）",
 };
 
-export function MplTable({ cellId, rows, showHint, onSubmit, onInvalidAttempt }: MplTableProps) {
+export function MplTable({ cellId, rows, showHint, onSubmit, onInvalidAttempt, collegeLabels }: MplTableProps) {
+  const labelX = collegeLabels?.college_x_display ?? "院校 X";
+  const labelY = collegeLabels?.college_y_display ?? "院校 Y";
   const [choices, setChoices] = useState<("A" | "B" | null)[]>(
     Array(rows.length).fill(null)
   );
@@ -96,8 +100,8 @@ export function MplTable({ cellId, rows, showHint, onSubmit, onInvalidAttempt }:
         {/* Header */}
         <div className="flex items-center gap-2 px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
           <span className="w-8 shrink-0 text-center">行</span>
-          <span className="flex-1 text-center">选项 A（院校 X）</span>
-          <span className="flex-1 text-center">选项 B（院校 Y）</span>
+          <span className="flex-1 text-center">选项 A（{labelX}）</span>
+          <span className="flex-1 text-center">选项 B（{labelY}）</span>
         </div>
 
         {/* Data rows */}

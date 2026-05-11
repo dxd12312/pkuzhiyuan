@@ -1,16 +1,17 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import SurveyShell from "@/components/survey-shell";
-import { COOKIE_NAME } from "@/lib/constants";
+import { getRespondentFromCookie } from "@/lib/session";
+import { getBlockSequence } from "@/lib/mpl";
 
 export default async function InstructionsPage() {
-  const cookieStore = await cookies();
-  const respondentId = cookieStore.get(COOKIE_NAME)?.value;
+  const respondent = await getRespondentFromCookie();
 
-  if (!respondentId) {
+  if (!respondent) {
     redirect("/");
   }
+
+  const firstBlock = getBlockSequence(respondent.r1_block_order)[0];
 
   return (
     <SurveyShell title="实验说明">
@@ -30,7 +31,7 @@ export default async function InstructionsPage() {
       </div>
       <div className="mt-8">
         <Link
-          href="/block/r1_low"
+          href={`/block/${firstBlock}`}
           className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
         >
           开始实验

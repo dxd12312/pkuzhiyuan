@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getDb } from "@/lib/cloudbase";
+import { assignCollegeLabels } from "@/lib/colleges";
 import {
   generateRespondentId,
   generateRandSeed,
@@ -12,12 +13,13 @@ import { COOKIE_NAME, COOKIE_MAX_AGE } from "@/lib/constants";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { session_id, province, total_score, subject_track, version } = body as {
+    const { session_id, province, total_score, subject_track, version, colleges } = body as {
       session_id: string;
       province: string;
       total_score?: number;
       subject_track: string;
       version?: string;
+      colleges?: string[];
     };
 
     if (!session_id || !province || !subject_track) {
@@ -58,6 +60,14 @@ export async function POST(req: NextRequest) {
     };
 
     await getDb().collection("respondents").add(doc);
+
+    // Persist college labels (best-effort — non-fatal if it fails)
+    if (colleges && colleges.length > 0) {
+      const labels = assignCollegeLabels(colleges, "student_input");
+      await getDb()
+        .collection("college_labels")
+        .add({ respondent_id, ...labels });
+    }
 
     const cookieStore = await cookies();
     cookieStore.set(COOKIE_NAME, respondent_id, {

@@ -6,18 +6,13 @@ import { MplTable } from "@/components/mpl-table";
 import { MPL_ROWS, getSwitchingPoint } from "@/lib/mpl";
 import { COOKIE_NAME } from "@/lib/constants";
 import type { CellId } from "@/lib/types";
+import type { CollegeLabels } from "@/lib/colleges";
 
 interface MplBlockClientProps {
   cellId: CellId;
   showHint: boolean;
+  blockSequence: CellId[];
 }
-
-// MVP routing: fixed linear sequence
-const NEXT_ROUTE: Record<CellId, string> = {
-  r1_low: "/block/r1_high",
-  r1_high: "/block/r4_low",
-  r4_low: "/complete",
-};
 
 function getRespondentId(): string | null {
   if (typeof document === "undefined") return null;
@@ -28,8 +23,12 @@ function getRespondentId(): string | null {
 }
 
 export function MplBlockClient({ cellId, showHint }: MplBlockClientProps) {
+  // After each block go to its comprehension page; the comprehension page
+  // then routes to the next block (or /diagnostic for the last block).
+  const nextRoute = `/comprehension/${cellId}`;
   const router = useRouter();
   const [respondentId, setRespondentId] = useState<string | null>(null);
+  const [collegeLabels, setCollegeLabels] = useState<CollegeLabels | undefined>(undefined);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [invalidAttemptCount, setInvalidAttemptCount] = useState(0);
@@ -38,7 +37,19 @@ export function MplBlockClient({ cellId, showHint }: MplBlockClientProps) {
   >(undefined);
 
   useEffect(() => {
-    setRespondentId(getRespondentId());
+    const rid = getRespondentId();
+    setRespondentId(rid);
+
+    if (!rid) return;
+
+    fetch(`/api/college-labels/${rid}`)
+      .then((r) => r.json())
+      .then((data: CollegeLabels) => {
+        if (data && !("error" in data)) setCollegeLabels(data);
+      })
+      .catch(() => {
+        // Non-fatal: table falls back to generic labels
+      });
   }, []);
 
   async function handleSubmit(choices: ("A" | "B")[]) {
@@ -70,7 +81,7 @@ export function MplBlockClient({ cellId, showHint }: MplBlockClientProps) {
         throw new Error(body?.error ?? `HTTP ${res.status}`);
       }
 
-      router.push(NEXT_ROUTE[cellId]);
+      router.push(nextRoute);
     } catch (err) {
       setSubmitError(
         err instanceof Error ? err.message : "提交失败，请重试。"
@@ -110,6 +121,7 @@ export function MplBlockClient({ cellId, showHint }: MplBlockClientProps) {
         showHint={showHint}
         onSubmit={handleSubmit}
         onInvalidAttempt={handleInvalidAttempt}
+        collegeLabels={collegeLabels}
       />
     </div>
   );
