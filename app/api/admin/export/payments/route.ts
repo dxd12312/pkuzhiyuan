@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/cloudbase";
+import { kvGetAll } from "@/lib/kv";
 import { toCsv } from "@/lib/csv";
 
+export const runtime = "edge";
+
 const ADMIN_SESSION_COOKIE = "admin_session";
-const PAGE_SIZE = 1000;
 
 interface PaymentRecord {
   payment_id?: string;
@@ -26,24 +27,8 @@ async function isAuthenticated(): Promise<boolean> {
 }
 
 async function fetchAllPayments(): Promise<PaymentRecord[]> {
-  const db = getDb();
-  const results: PaymentRecord[] = [];
-  let offset = 0;
-
-  while (true) {
-    const res = await db
-      .collection("payments")
-      .orderBy("created_at", "asc")
-      .skip(offset)
-      .limit(PAGE_SIZE)
-      .get();
-
-    const page = (res.data ?? []) as PaymentRecord[];
-    results.push(...page);
-    if (page.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-  }
-
+  const results = await kvGetAll<PaymentRecord>("payment:");
+  results.sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
   return results;
 }
 

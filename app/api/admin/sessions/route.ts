@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/cloudbase";
+import { kvGetAll, kvPut } from "@/lib/kv";
 import type { Session } from "@/lib/types";
+
+export const runtime = "edge";
 
 const ADMIN_SESSION_COOKIE = "admin_session";
 const BASE_URL = "https://www.pkuzhiyuan.com";
@@ -21,14 +23,8 @@ export async function GET() {
   }
 
   try {
-    const db = getDb();
-    const result = await db
-      .collection("sessions")
-      .orderBy("created_at", "desc")
-      .limit(200)
-      .get();
-
-    const sessions = (result.data ?? []) as Session[];
+    const sessions = await kvGetAll<Session>("session:");
+    sessions.sort((a, b) => b.created_at.localeCompare(a.created_at));
     return NextResponse.json({ sessions });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -73,7 +69,7 @@ export async function POST(req: NextRequest) {
       entry_url,
     };
 
-    await getDb().collection("sessions").add(session);
+    await kvPut(`session:${session_id}`, session);
 
     return NextResponse.json({ session }, { status: 201 });
   } catch (err) {

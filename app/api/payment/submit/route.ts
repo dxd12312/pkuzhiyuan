@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/cloudbase";
+import { kvGet, kvPut } from "@/lib/kv";
 import { COOKIE_NAME } from "@/lib/constants";
+import type { Payment } from "@/lib/types";
+
+export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,17 +26,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "missing_fields" }, { status: 400 });
     }
 
-    const db = getDb();
-    await db
-      .collection("payments")
-      .where({ respondent_id })
-      .update({
-        payment_method: method,
-        payment_account: account,
-        payee_name,
-        is_submitted: true,
-        submitted_at: new Date().toISOString(),
-      });
+    const payment = await kvGet<Payment>(`payment:${respondent_id}`);
+    if (!payment) {
+      return NextResponse.json({ error: "payment_not_found" }, { status: 404 });
+    }
+
+    const updated: Payment = {
+      ...payment,
+      payment_method: method,
+      payment_account: account,
+      payee_name,
+      is_submitted: true,
+      submitted_at: new Date().toISOString(),
+    };
+
+    await kvPut(`payment:${respondent_id}`, updated);
 
     return NextResponse.json({ success: true });
   } catch (err) {

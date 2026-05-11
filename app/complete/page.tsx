@@ -1,20 +1,13 @@
 import SurveyShell from "@/components/survey-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { getRespondentFromCookie } from "@/lib/session";
-import { getDb } from "@/lib/cloudbase";
+import { kvGet } from "@/lib/kv";
+import type { Payment } from "@/lib/types";
 
 async function getTotalPayout(respondent_id: string): Promise<number | null> {
   try {
-    const db = getDb();
-    const result = await db
-      .collection("payments")
-      .where({ respondent_id })
-      .get();
-    const data = result.data as { total_payout?: number }[] | undefined;
-    if (data && data.length > 0 && typeof data[0].total_payout === "number") {
-      return data[0].total_payout;
-    }
-    return null;
+    const payment = await kvGet<Payment>(`payment:${respondent_id}`);
+    return payment?.total_payout ?? null;
   } catch {
     return null;
   }

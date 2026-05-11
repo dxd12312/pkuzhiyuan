@@ -1,22 +1,27 @@
-import { v4 as uuidv4 } from "uuid";
-import { createHash } from "crypto";
-
 export function generateRespondentId(): string {
-  return uuidv4();
+  return crypto.randomUUID();
 }
 
 export function generateRandSeed(): string {
-  return uuidv4().replace(/-/g, "").slice(0, 16);
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
 }
 
-export function assignTreatmentGroup(seed: string): "control" | "treatment" {
-  const hash = createHash("sha256").update(seed + "_group").digest("hex");
+async function sha256hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function assignTreatmentGroup(seed: string): Promise<"control" | "treatment"> {
+  const hash = await sha256hex(seed + "_group");
   const value = parseInt(hash.slice(0, 8), 16);
   return value % 2 === 0 ? "control" : "treatment";
 }
 
-export function assignBlockOrder(seed: string): "low_first" | "high_first" {
-  const hash = createHash("sha256").update(seed + "_order").digest("hex");
+export async function assignBlockOrder(seed: string): Promise<"low_first" | "high_first"> {
+  const hash = await sha256hex(seed + "_order");
   const value = parseInt(hash.slice(0, 8), 16);
   return value % 2 === 0 ? "low_first" : "high_first";
 }

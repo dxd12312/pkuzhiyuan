@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/cloudbase";
+import { kvGet, kvPut } from "@/lib/kv";
 import { COOKIE_NAME } from "@/lib/constants";
 import type { CellId } from "@/lib/types";
+
+export const runtime = 'edge';
 
 // Numeric value each option label represents (in 元).
 const OPTION_VALUES: Record<string, number> = {
@@ -43,10 +45,10 @@ export async function POST(req: NextRequest) {
 
     const comp_correct = answer === CORRECT_ANSWERS[cell_id];
 
-    await getDb()
-      .collection("responses")
-      .where({ respondent_id, cell_id })
-      .update({ comp_answer: answer, comp_correct });
+    const existing = await kvGet<Record<string, unknown>>(`response:${respondent_id}:${cell_id}`);
+    if (existing) {
+      await kvPut(`response:${respondent_id}:${cell_id}`, { ...existing, comp_answer: answer, comp_correct });
+    }
 
     return NextResponse.json({ success: true, correct: comp_correct });
   } catch (err) {

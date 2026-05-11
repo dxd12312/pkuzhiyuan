@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/cloudbase";
+import { kvList } from "@/lib/kv";
 import { AdminExport } from "@/components/admin-export";
 
 const ADMIN_SESSION_COOKIE = "admin_session";
@@ -10,10 +10,10 @@ async function isAuthenticated(): Promise<boolean> {
   return !!cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
 }
 
-async function getCount(collection: string): Promise<number> {
+async function getCount(prefix: string): Promise<number> {
   try {
-    const res = await getDb().collection(collection).count();
-    return (res as { total: number }).total ?? 0;
+    const keys = await kvList(prefix);
+    return keys.length;
   } catch {
     return 0;
   }
@@ -25,9 +25,9 @@ export default async function ExportPage() {
   }
 
   const [respondentCount, responseCount, paymentCount] = await Promise.all([
-    getCount("respondents"),
-    getCount("responses"),
-    getCount("payments"),
+    getCount("respondent:"),
+    getCount("response:"),
+    getCount("payment:"),
   ]);
 
   return (

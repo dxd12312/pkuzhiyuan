@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import jwt from "jsonwebtoken";
+import { jwtVerify } from "jose";
 
 const ADMIN_COOKIE = "admin_session";
 
@@ -10,7 +10,9 @@ export async function verifyAdminSession(): Promise<{ admin_id: string; username
   const secret = process.env.ADMIN_SESSION_SECRET;
   if (!secret) return null;
   try {
-    return jwt.verify(token, secret) as { admin_id: string; username: string };
+    const key = new TextEncoder().encode(secret);
+    const { payload } = await jwtVerify(token, key);
+    return payload as unknown as { admin_id: string; username: string };
   } catch {
     return null;
   }

@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/cloudbase";
+import { kvGet, kvPut } from "@/lib/kv";
 import { COOKIE_NAME } from "@/lib/constants";
 import { buildMessages, type DiagnosticAnswer, type ReportInput } from "@/lib/report-prompt";
 import { buildFallbackReport } from "@/lib/report-fallback";
 import type { Respondent, BlockResponse } from "@/lib/types";
-import { v4 as uuidv4 } from "uuid";
+import type { DiagnosticResponse, AIReport } from "@/lib/types";
+
+export const runtime = "edge";
 
 const AI_TIMEOUT_MS = 10_000;
 
@@ -14,26 +16,23 @@ async function fetchRespondentData(respondentId: string): Promise<{
   diagnosticAnswers: DiagnosticAnswer[];
   blockResponses: BlockResponse[];
 } | null> {
-  const db = getDb();
-
-  const [respondentResult, diagResult, blockResult] = await Promise.all([
-    db.collection("respondents").where({ respondent_id: respondentId }).get(),
-    db
-      .collection("diagnostic_answers")
-      .where({ respondent_id: respondentId })
-      .get()
-      .catch(() => ({ data: [] })),
-    db.collection("responses").where({ respondent_id: respondentId }).get(),
+  const [respondent, diagnostic, r1_low, r1_high, r4_low] = await Promise.all([
+    kvGet<Respondent>(`respondent:${respondentId}`),
+    kvGet<DiagnosticResponse>(`diagnostic:${respondentId}`),
+    kvGet<BlockResponse>(`response:${respondentId}:r1_low`),
+    kvGet<BlockResponse>(`response:${respondentId}:r1_high`),
+    kvGet<BlockResponse>(`response:${respondentId}:r4_low`),
   ]);
 
-  const respondents = respondentResult.data as Respondent[] | undefined;
-  if (!respondents || respondents.length === 0) return null;
+  if (!respondent) return null;
 
-  return {
-    respondent: respondents[0],
-    diagnosticAnswers: (diagResult.data ?? []) as DiagnosticAnswer[],
-    blockResponses: (blockResult.data ?? []) as BlockResponse[],
-  };
+  const rawAnswers: Record<string, string> = diagnostic?.answers ?? {};
+  const diagnosticAnswers: DiagnosticAnswer[] = Object.entries(rawAnswers).map(
+    ([question_id, answer]) => ({ question_id, answer })
+  );
+  const blockResponses = [r1_low, r1_high, r4_low].filter(Boolean) as BlockResponse[];
+
+  return { respondent, diagnosticAnswers, blockResponses };
 }
 
 async function callOpenRouter(input: ReportInput): Promise<ReadableStream<Uint8Array>> {
@@ -121,8 +120,7 @@ export async function POST() {
     blockResponses: respondentData.blockResponses,
   };
 
-  const reportId = uuidv4();
-  const db = getDb();
+  const reportId = crypto.randomUUID();
   const encoder = new TextEncoder();
   const modelId = process.env.AI_MODEL_ID ?? "google/gemini-2.0-flash";
 
@@ -168,20 +166,17 @@ export async function POST() {
 
             controller.close();
 
-            // Save to CloudBase (fire-and-forget)
-            db
-              .collection("ai_reports")
-              .add({
-                report_id: reportId,
-                respondent_id: respondentId,
-                output_text: fullText,
-                model_id: modelId,
-                generation_ms: Date.now() - startMs,
-                is_success: true,
-                is_fallback: false,
-                created_at: new Date().toISOString(),
-              })
-              .catch(() => {});
+            // Save to KV (fire-and-forget)
+            kvPut(`ai_report:${respondentId}`, {
+              report_id: reportId,
+              respondent_id: respondentId,
+              output_text: fullText,
+              model_id: modelId,
+              generation_ms: Date.now() - startMs,
+              is_success: true,
+              is_fallback: false,
+              created_at: new Date().toISOString(),
+            } satisfies AIReport).catch(() => {});
           } catch (err) {
             controller.error(err);
           }
@@ -200,19 +195,16 @@ export async function POST() {
   // Fallback: rule-based report
   const fallbackText = buildFallbackReport(input);
 
-  db
-    .collection("ai_reports")
-    .add({
-      report_id: reportId,
-      respondent_id: respondentId,
-      output_text: fallbackText,
-      model_id: "fallback",
-      generation_ms: Date.now() - startMs,
-      is_success: true,
-      is_fallback: true,
-      created_at: new Date().toISOString(),
-    })
-    .catch(() => {});
+  kvPut(`ai_report:${respondentId}`, {
+    report_id: reportId,
+    respondent_id: respondentId,
+    output_text: fallbackText,
+    model_id: "fallback",
+    generation_ms: Date.now() - startMs,
+    is_success: true,
+    is_fallback: true,
+    created_at: new Date().toISOString(),
+  } satisfies AIReport).catch(() => {});
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {

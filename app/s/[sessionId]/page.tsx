@@ -1,4 +1,4 @@
-import { getDb } from "@/lib/cloudbase";
+import { kvGet } from "@/lib/kv";
 import SurveyShell from "@/components/survey-shell";
 import EntryForm from "@/components/entry-form";
 import type { Session } from "@/lib/types";
@@ -12,14 +12,7 @@ export default async function SessionEntryPage({ params }: Props) {
 
   let session: Session | null = null;
   try {
-    const db = getDb();
-    const result = await db
-      .collection("sessions")
-      .where({ session_id: sessionId })
-      .limit(1)
-      .get();
-    const data = result.data as Session[] | undefined;
-    session = data && data.length > 0 ? data[0] : null;
+    session = await kvGet<Session>(`session:${sessionId}`);
   } catch {
     // Fall through to error state
   }

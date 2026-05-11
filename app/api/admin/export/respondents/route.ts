@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/cloudbase";
+import { kvGetAll } from "@/lib/kv";
 import { toCsv } from "@/lib/csv";
 import type { Respondent } from "@/lib/types";
 
+export const runtime = "edge";
+
 const ADMIN_SESSION_COOKIE = "admin_session";
-const PAGE_SIZE = 1000;
 
 async function isAuthenticated(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -13,24 +14,8 @@ async function isAuthenticated(): Promise<boolean> {
 }
 
 async function fetchAllRespondents(): Promise<Respondent[]> {
-  const db = getDb();
-  const results: Respondent[] = [];
-  let offset = 0;
-
-  while (true) {
-    const res = await db
-      .collection("respondents")
-      .orderBy("started_at", "asc")
-      .skip(offset)
-      .limit(PAGE_SIZE)
-      .get();
-
-    const page = (res.data ?? []) as Respondent[];
-    results.push(...page);
-    if (page.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-  }
-
+  const results = await kvGetAll<Respondent>("respondent:");
+  results.sort((a, b) => a.started_at.localeCompare(b.started_at));
   return results;
 }
 

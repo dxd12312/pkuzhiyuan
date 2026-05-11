@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getDb } from "@/lib/cloudbase";
+import { kvGetAll } from "@/lib/kv";
 import AdminSessionList from "@/components/admin-session-list";
 import type { Session } from "@/lib/types";
 
@@ -15,13 +15,8 @@ export default async function AdminSessionsPage() {
 
   let sessions: Session[] = [];
   try {
-    const db = getDb();
-    const result = await db
-      .collection("sessions")
-      .orderBy("created_at", "desc")
-      .limit(200)
-      .get();
-    sessions = (result.data ?? []) as Session[];
+    sessions = await kvGetAll<Session>("session:");
+    sessions.sort((a, b) => b.created_at.localeCompare(a.created_at));
   } catch {
     // Render with empty list; API errors surface in client component
   }

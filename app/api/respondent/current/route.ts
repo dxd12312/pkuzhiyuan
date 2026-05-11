@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/cloudbase";
+import { kvGet } from "@/lib/kv";
 import { COOKIE_NAME } from "@/lib/constants";
+
+export const runtime = 'edge';
 
 export async function GET() {
   try {
@@ -12,12 +14,7 @@ export async function GET() {
       return NextResponse.json({ error: "no_session" }, { status: 401 });
     }
 
-    const result = await getDb()
-      .collection("respondents")
-      .where({ respondent_id })
-      .get();
-
-    const respondent = (result as { data: unknown[] }).data[0];
+    const respondent = await kvGet(`respondent:${respondent_id}`);
 
     if (!respondent) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });

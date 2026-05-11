@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/cloudbase";
+import { kvGet, kvPut } from "@/lib/kv";
 import { validateSingleCrossing, getSwitchingPoint } from "@/lib/mpl";
 import { COOKIE_NAME } from "@/lib/constants";
 import type { CellId } from "@/lib/types";
-import { v4 as uuidv4 } from "uuid";
+
+
+export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,7 +36,7 @@ export async function POST(req: NextRequest) {
     }
 
     const switching_point = getSwitchingPoint(choices);
-    const response_id = uuidv4();
+    const response_id = crypto.randomUUID();
 
     const doc = {
       response_id,
@@ -51,14 +53,13 @@ export async function POST(req: NextRequest) {
       page_submitted_at: new Date().toISOString(),
     };
 
-    await getDb().collection("responses").add(doc);
+    await kvPut(`response:${respondent_id}:${cell_id}`, doc);
 
-    const db = getDb();
-    const _ = db.command;
-    await db
-      .collection("respondents")
-      .where({ respondent_id })
-      .update({ current_page: _.inc(1) });
+    const existing = await kvGet<Record<string, unknown>>(`respondent:${respondent_id}`);
+    if (existing) {
+      const current_page = typeof existing.current_page === "number" ? existing.current_page : 0;
+      await kvPut(`respondent:${respondent_id}`, { ...existing, current_page: current_page + 1 });
+    }
 
     return NextResponse.json({ success: true, response_id, switching_point });
   } catch (err) {

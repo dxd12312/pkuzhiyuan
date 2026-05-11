@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/cloudbase";
+import { kvPut } from "@/lib/kv";
 import { COOKIE_NAME } from "@/lib/constants";
-import { v4 as uuidv4 } from "uuid";
+
 import type { DiagnosticAnswer } from "@/lib/diagnostic";
+
+export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,13 +24,13 @@ export async function POST(req: NextRequest) {
     }
 
     const doc = {
-      diagnostic_id: uuidv4(),
+      diagnostic_id: crypto.randomUUID(),
       respondent_id,
       answers,
       submitted_at: new Date().toISOString(),
     };
 
-    await getDb().collection("diagnostic_responses").add(doc);
+    await kvPut(`diagnostic:${respondent_id}`, doc);
 
     return NextResponse.json({ success: true });
   } catch (err) {

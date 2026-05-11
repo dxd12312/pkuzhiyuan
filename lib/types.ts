@@ -61,3 +61,40 @@ export interface MplRow {
   optionA: { amount: number; probability: number };
   optionB: { amount: number; probability: number };
 }
+
+export interface Payment {
+  payment_id: string;
+  respondent_id: string;
+  fixed_amount: number;
+  lottery_block: CellId;
+  lottery_row: number;
+  lottery_choice: "A" | "B";
+  lottery_payout: number;
+  comp_drawn_cell: CellId;
+  comp_bonus: number;
+  total_payout: number;
+  drawn_at: string;
+  is_submitted: boolean;
+  payment_method?: string;
+  payment_account?: string;
+  payee_name?: string;
+  submitted_at?: string;
+}
+
+export interface DiagnosticResponse {
+  diagnostic_id: string;
+  respondent_id: string;
+  answers: Record<string, string>;
+  submitted_at: string;
+}
+
+export interface AIReport {
+  report_id: string;
+  respondent_id: string;
+  output_text: string;
+  model_id: string;
+  generation_ms: number;
+  is_success: boolean;
+  is_fallback: boolean;
+  created_at: string;
+}

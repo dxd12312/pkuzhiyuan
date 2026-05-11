@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import { getDb } from "@/lib/cloudbase";
+import { SignJWT } from "jose";
+import { kvGet, kvPut, kvDelete } from "@/lib/kv";
+
+export const runtime = "edge";
 
 const MAX_ATTEMPTS = 10;
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
@@ -28,17 +30,10 @@ function getClientIp(req: NextRequest): string {
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
-  const db = getDb();
 
   // Rate-limit check
   try {
-    const attemptResult = await db
-      .collection("login_attempts")
-      .where({ ip })
-      .limit(1)
-      .get();
-
-    const record = (attemptResult.data?.[0] ?? null) as LoginAttempt | null;
+    const record = await kvGet<LoginAttempt>(`login_attempt:${ip}`);
     if (record) {
       const windowStart = new Date(record.window_start).getTime();
       const now = Date.now();
@@ -47,7 +42,7 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch {
-    // Non-fatal: proceed without rate-limit if DB unavailable
+    // Non-fatal: proceed without rate-limit if KV unavailable
   }
 
   // Parse body
@@ -68,31 +63,26 @@ export async function POST(req: NextRequest) {
   // Lookup admin
   let admin: Admin | null = null;
   try {
-    const result = await db
-      .collection("admins")
-      .where({ username })
-      .limit(1)
-      .get();
-    admin = (result.data?.[0] ?? null) as Admin | null;
+    admin = await kvGet<Admin>(`admin:${username}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 
   if (!admin) {
-    await recordAttempt(db, ip);
+    await recordAttempt(ip);
     return NextResponse.json({ error: "用户名或密码错误" }, { status: 401 });
   }
 
   const valid = await bcrypt.compare(password, admin.password_hash);
   if (!valid) {
-    await recordAttempt(db, ip);
+    await recordAttempt(ip);
     return NextResponse.json({ error: "用户名或密码错误" }, { status: 401 });
   }
 
   // Clear failed attempts on success
   try {
-    await db.collection("login_attempts").where({ ip }).remove();
+    await kvDelete(`login_attempt:${ip}`);
   } catch {
     // Non-fatal
   }
@@ -102,11 +92,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "服务器配置错误" }, { status: 500 });
   }
 
-  const token = jwt.sign(
-    { admin_id: admin.admin_id, username: admin.username },
-    secret,
-    { expiresIn: "24h" }
-  );
+  const secretKey = new TextEncoder().encode(secret);
+  const token = await new SignJWT({ admin_id: admin.admin_id, username: admin.username })
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime("24h")
+    .sign(secretKey);
 
   const response = NextResponse.json({ ok: true });
   response.cookies.set("admin_session", token, {
@@ -119,25 +109,17 @@ export async function POST(req: NextRequest) {
   return response;
 }
 
-async function recordAttempt(
-  db: ReturnType<typeof getDb>,
-  ip: string
-): Promise<void> {
+async function recordAttempt(ip: string): Promise<void> {
   try {
-    const result = await db
-      .collection("login_attempts")
-      .where({ ip })
-      .limit(1)
-      .get();
-    const record = (result.data?.[0] ?? null) as LoginAttempt | null;
+    const existing = await kvGet<LoginAttempt>(`login_attempt:${ip}`);
     const now = new Date().toISOString();
-    if (record) {
-      await db
-        .collection("login_attempts")
-        .where({ ip })
-        .update({ count: db.command.inc(1) });
+    if (existing) {
+      await kvPut(`login_attempt:${ip}`, {
+        ...existing,
+        count: existing.count + 1,
+      });
     } else {
-      await db.collection("login_attempts").add({ ip, count: 1, window_start: now });
+      await kvPut(`login_attempt:${ip}`, { ip, count: 1, window_start: now });
     }
   } catch {
     // Non-fatal

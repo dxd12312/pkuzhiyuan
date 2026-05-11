@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/cloudbase";
+import { kvGet, kvPut } from "@/lib/kv";
+import type { Session } from "@/lib/types";
+
+export const runtime = "edge";
 
 const ADMIN_SESSION_COOKIE = "admin_session";
 
@@ -24,15 +27,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "session_id and is_active required" }, { status: 400 });
     }
 
-    const db = getDb();
-    const result = await db
-      .collection("sessions")
-      .where({ session_id })
-      .update({ is_active });
-
-    if ((result as { updated?: number }).updated === 0) {
+    const session = await kvGet<Session>(`session:${session_id}`);
+    if (!session) {
       return NextResponse.json({ error: "session not found" }, { status: 404 });
     }
+
+    await kvPut(`session:${session_id}`, { ...session, is_active });
 
     return NextResponse.json({ ok: true, session_id, is_active });
   } catch (err) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getDb } from "@/lib/cloudbase";
+import { kvPut } from "@/lib/kv";
 import { assignCollegeLabels } from "@/lib/colleges";
 import { isAboveThreshold } from "@/lib/threshold";
 import {
@@ -10,6 +10,8 @@ import {
   assignBlockOrder,
 } from "@/lib/randomize";
 import { COOKIE_NAME, COOKIE_MAX_AGE } from "@/lib/constants";
+
+export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {
@@ -49,8 +51,8 @@ export async function POST(req: NextRequest) {
 
     const respondent_id = generateRespondentId();
     const rand_seed = generateRandSeed();
-    const treatment_group = assignTreatmentGroup(rand_seed);
-    const r1_block_order = assignBlockOrder(rand_seed);
+    const treatment_group = await assignTreatmentGroup(rand_seed);
+    const r1_block_order = await assignBlockOrder(rand_seed);
 
     const ua = req.headers.get("user-agent") ?? "";
     const device_type: "mobile" | "desktop" =
@@ -90,14 +92,12 @@ export async function POST(req: NextRequest) {
       rand_seed,
     };
 
-    await getDb().collection("respondents").add(doc);
+    await kvPut(`respondent:${respondent_id}`, doc);
 
     // Persist college labels (best-effort — non-fatal if it fails)
     if (colleges && colleges.length > 0) {
       const labels = assignCollegeLabels(colleges, "student_input");
-      await getDb()
-        .collection("college_labels")
-        .add({ respondent_id, ...labels });
+      await kvPut(`college_labels:${respondent_id}`, { respondent_id, ...labels });
     }
 
     const cookieStore = await cookies();

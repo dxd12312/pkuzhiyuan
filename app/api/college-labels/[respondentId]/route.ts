@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/cloudbase";
+import { kvGet } from "@/lib/kv";
 import { NEUTRAL_FALLBACKS } from "@/lib/colleges";
+
+export const runtime = 'edge';
 
 export async function GET(
   _req: NextRequest,
@@ -13,21 +15,12 @@ export async function GET(
       return NextResponse.json(NEUTRAL_FALLBACKS);
     }
 
-    const db = getDb();
-    const result = await db
-      .collection("college_labels")
-      .where({ respondent_id: respondentId })
-      .limit(1)
-      .get();
-
-    const doc = result.data?.[0];
+    const doc = await kvGet<Record<string, unknown>>(`college_labels:${respondentId}`);
     if (!doc) {
       return NextResponse.json(NEUTRAL_FALLBACKS);
     }
 
-    // Strip CloudBase internal fields
-    const { _id, respondent_id: _rid, ...labels } = doc as Record<string, unknown>;
-    void _id;
+    const { respondent_id: _rid, ...labels } = doc;
     void _rid;
 
     return NextResponse.json(labels);
