@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { kvGet } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import { COOKIE_NAME } from "@/lib/constants";
 import type { Respondent } from "@/lib/types";
 
@@ -8,7 +8,10 @@ export async function getRespondentFromCookie(): Promise<Respondent | null> {
   const id = cookieStore.get(COOKIE_NAME)?.value;
   if (!id) return null;
   try {
-    return await kvGet<Respondent>(`respondent:${id}`);
+    const sql = getSql();
+    const rows = await sql`SELECT * FROM respondents WHERE respondent_id = ${id}`;
+    if (rows.length === 0) return null;
+    return rows[0] as Respondent;
   } catch {
     return null;
   }

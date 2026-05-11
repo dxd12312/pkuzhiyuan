@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { kvGet } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import { NEUTRAL_FALLBACKS } from "@/lib/colleges";
 
 
@@ -14,12 +14,16 @@ export async function GET(
       return NextResponse.json(NEUTRAL_FALLBACKS);
     }
 
-    const doc = await kvGet<Record<string, unknown>>(`college_labels:${respondentId}`);
-    if (!doc) {
+    const sql = getSql();
+    const rows = await sql`
+      SELECT * FROM college_labels WHERE respondent_id = ${respondentId}
+    `;
+
+    if (rows.length === 0) {
       return NextResponse.json(NEUTRAL_FALLBACKS);
     }
 
-    const { respondent_id: _rid, ...labels } = doc;
+    const { respondent_id: _rid, ...labels } = rows[0] as Record<string, unknown>;
     void _rid;
 
     return NextResponse.json(labels);

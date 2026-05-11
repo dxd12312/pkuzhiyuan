@@ -1,13 +1,13 @@
 import SurveyShell from "@/components/survey-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { getRespondentFromCookie } from "@/lib/session";
-import { kvGet } from "@/lib/kv";
-import type { Payment } from "@/lib/types";
+import { getSql } from "@/lib/db";
 
 async function getTotalPayout(respondent_id: string): Promise<number | null> {
   try {
-    const payment = await kvGet<Payment>(`payment:${respondent_id}`);
-    return payment?.total_payout ?? null;
+    const sql = getSql();
+    const rows = await sql`SELECT total_payout FROM payments WHERE respondent_id = ${respondent_id}`;
+    return rows.length > 0 ? (rows[0].total_payout as number) : null;
   } catch {
     return null;
   }

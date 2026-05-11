@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { kvGetAll } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import { toCsv } from "@/lib/csv";
-import type { Respondent } from "@/lib/types";
 
 
 const ADMIN_SESSION_COOKIE = "admin_session";
@@ -12,21 +11,16 @@ async function isAuthenticated(): Promise<boolean> {
   return !!cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
 }
 
-async function fetchAllRespondents(): Promise<Respondent[]> {
-  const results = await kvGetAll<Respondent>("respondent:");
-  results.sort((a, b) => a.started_at.localeCompare(b.started_at));
-  return results;
-}
-
 export async function GET() {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   try {
-    const respondents = await fetchAllRespondents();
+    const sql = getSql();
+    const respondents = await sql`SELECT * FROM respondents ORDER BY started_at`;
 
-    // Flatten to plain objects, omit sensitive fields (ip_address, user_agent)
+    // Omit sensitive fields (ip_address, user_agent)
     const rows = respondents.map((r) => ({
       respondent_id: r.respondent_id,
       session_id: r.session_id,

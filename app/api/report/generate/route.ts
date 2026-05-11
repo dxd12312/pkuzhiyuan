@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { kvGet, kvPut } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import { COOKIE_NAME } from "@/lib/constants";
 import { buildMessages, type DiagnosticAnswer, type ReportInput } from "@/lib/report-prompt";
 import { buildFallbackReport } from "@/lib/report-fallback";
 import type { Respondent, BlockResponse } from "@/lib/types";
-import type { DiagnosticResponse, AIReport } from "@/lib/types";
 
 
 const AI_TIMEOUT_MS = 10_000;
@@ -15,21 +14,28 @@ async function fetchRespondentData(respondentId: string): Promise<{
   diagnosticAnswers: DiagnosticAnswer[];
   blockResponses: BlockResponse[];
 } | null> {
-  const [respondent, diagnostic, r1_low, r1_high, r4_low] = await Promise.all([
-    kvGet<Respondent>(`respondent:${respondentId}`),
-    kvGet<DiagnosticResponse>(`diagnostic:${respondentId}`),
-    kvGet<BlockResponse>(`response:${respondentId}:r1_low`),
-    kvGet<BlockResponse>(`response:${respondentId}:r1_high`),
-    kvGet<BlockResponse>(`response:${respondentId}:r4_low`),
+  const sql = getSql();
+
+  const [respondentRows, diagnosticRows, responseRows] = await Promise.all([
+    sql`SELECT * FROM respondents WHERE respondent_id = ${respondentId}`,
+    sql`SELECT answers FROM diagnostic_responses WHERE respondent_id = ${respondentId}`,
+    sql`SELECT * FROM responses WHERE respondent_id = ${respondentId}`,
   ]);
 
-  if (!respondent) return null;
+  if (respondentRows.length === 0) return null;
 
-  const rawAnswers: Record<string, string> = diagnostic?.answers ?? {};
+  const respondent = respondentRows[0] as Respondent;
+
+  const rawAnswers: Record<string, string> =
+    diagnosticRows.length > 0 ? (diagnosticRows[0].answers as Record<string, string>) : {};
   const diagnosticAnswers: DiagnosticAnswer[] = Object.entries(rawAnswers).map(
     ([question_id, answer]) => ({ question_id, answer })
   );
-  const blockResponses = [r1_low, r1_high, r4_low].filter(Boolean) as BlockResponse[];
+
+  const blockResponses = responseRows.map((r) => ({
+    ...r,
+    choices: Array.isArray(r.choices) ? r.choices : JSON.parse(r.choices as string),
+  })) as BlockResponse[];
 
   return { respondent, diagnosticAnswers, blockResponses };
 }
@@ -165,17 +171,18 @@ export async function POST() {
 
             controller.close();
 
-            // Save to KV (fire-and-forget)
-            kvPut(`ai_report:${respondentId}`, {
-              report_id: reportId,
-              respondent_id: respondentId,
-              output_text: fullText,
-              model_id: modelId,
-              generation_ms: Date.now() - startMs,
-              is_success: true,
-              is_fallback: false,
-              created_at: new Date().toISOString(),
-            } satisfies AIReport).catch(() => {});
+            // Save to DB (fire-and-forget)
+            getSql()`
+              INSERT INTO ai_reports (report_id, respondent_id, output_text, model_id, generation_ms, is_success, is_fallback)
+              VALUES (${reportId}, ${respondentId}, ${fullText}, ${modelId}, ${Date.now() - startMs}, ${true}, ${false})
+              ON CONFLICT (respondent_id) DO UPDATE SET
+                output_text = EXCLUDED.output_text,
+                model_id = EXCLUDED.model_id,
+                generation_ms = EXCLUDED.generation_ms,
+                is_success = EXCLUDED.is_success,
+                is_fallback = EXCLUDED.is_fallback,
+                created_at = now()
+            `.catch(() => {});
           } catch (err) {
             controller.error(err);
           }
@@ -194,16 +201,17 @@ export async function POST() {
   // Fallback: rule-based report
   const fallbackText = buildFallbackReport(input);
 
-  kvPut(`ai_report:${respondentId}`, {
-    report_id: reportId,
-    respondent_id: respondentId,
-    output_text: fallbackText,
-    model_id: "fallback",
-    generation_ms: Date.now() - startMs,
-    is_success: true,
-    is_fallback: true,
-    created_at: new Date().toISOString(),
-  } satisfies AIReport).catch(() => {});
+  getSql()`
+    INSERT INTO ai_reports (report_id, respondent_id, output_text, model_id, generation_ms, is_success, is_fallback)
+    VALUES (${reportId}, ${respondentId}, ${fallbackText}, ${"fallback"}, ${Date.now() - startMs}, ${true}, ${true})
+    ON CONFLICT (respondent_id) DO UPDATE SET
+      output_text = EXCLUDED.output_text,
+      model_id = EXCLUDED.model_id,
+      generation_ms = EXCLUDED.generation_ms,
+      is_success = EXCLUDED.is_success,
+      is_fallback = EXCLUDED.is_fallback,
+      created_at = now()
+  `.catch(() => {});
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {

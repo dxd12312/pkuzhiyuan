@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { kvPut } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import { assignCollegeLabels } from "@/lib/colleges";
 import { isAboveThreshold } from "@/lib/threshold";
 import {
@@ -69,34 +69,40 @@ export async function POST(req: NextRequest) {
       if (!above) is_filtered = true;
     }
 
-    const doc = {
-      respondent_id,
-      session_id,
-      version: resolvedVersion,
-      treatment_group,
-      r1_block_order,
-      province,
-      ...(total_score !== undefined && { total_score }),
-      subject_track,
-      ...(school_id !== undefined && { school_id }),
-      ...(class_id !== undefined && { class_id }),
-      ...(student_seq !== undefined && { student_seq }),
-      device_type,
-      user_agent: ua,
-      ip_address,
-      started_at: new Date().toISOString(),
-      current_page: 0,
-      is_completed: false,
-      is_filtered,
-      rand_seed,
-    };
+    const sql = getSql();
 
-    await kvPut(`respondent:${respondent_id}`, doc);
+    await sql`
+      INSERT INTO respondents (
+        respondent_id, session_id, version, treatment_group, r1_block_order,
+        province, total_score, subject_track, school_id, class_id, student_seq,
+        device_type, user_agent, ip_address, started_at, current_page,
+        is_completed, is_filtered, rand_seed
+      ) VALUES (
+        ${respondent_id}, ${session_id}, ${resolvedVersion}, ${treatment_group}, ${r1_block_order},
+        ${province}, ${total_score ?? null}, ${subject_track}, ${school_id ?? null},
+        ${class_id ?? null}, ${student_seq ?? null}, ${device_type}, ${ua}, ${ip_address},
+        ${new Date().toISOString()}, ${0}, ${false}, ${is_filtered}, ${rand_seed}
+      )
+    `;
 
     // Persist college labels (best-effort — non-fatal if it fails)
     if (colleges && colleges.length > 0) {
       const labels = assignCollegeLabels(colleges, "student_input");
-      await kvPut(`college_labels:${respondent_id}`, { respondent_id, ...labels });
+      try {
+        await sql`
+          INSERT INTO college_labels (
+            respondent_id, label_source, college_x_display, college_y_display,
+            downstream_2, downstream_3, downstream_4, fallback_display
+          ) VALUES (
+            ${respondent_id}, ${labels.label_source ?? null},
+            ${labels.college_x_display ?? null}, ${labels.college_y_display ?? null},
+            ${labels.downstream_2 ?? null}, ${labels.downstream_3 ?? null},
+            ${labels.downstream_4 ?? null}, ${labels.fallback_display ?? null}
+          )
+        `;
+      } catch {
+        // non-fatal
+      }
     }
 
     const cookieStore = await cookies();

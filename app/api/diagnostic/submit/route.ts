@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { kvPut } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import { COOKIE_NAME } from "@/lib/constants";
 
 import type { DiagnosticAnswer } from "@/lib/diagnostic";
@@ -22,14 +22,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "answers required" }, { status: 400 });
     }
 
-    const doc = {
-      diagnostic_id: crypto.randomUUID(),
-      respondent_id,
-      answers,
-      submitted_at: new Date().toISOString(),
-    };
+    const diagnostic_id = crypto.randomUUID();
+    const submitted_at = new Date().toISOString();
 
-    await kvPut(`diagnostic:${respondent_id}`, doc);
+    const sql = getSql();
+    await sql`
+      INSERT INTO diagnostic_responses (diagnostic_id, respondent_id, answers, submitted_at)
+      VALUES (
+        ${diagnostic_id}, ${respondent_id},
+        ${JSON.stringify(answers)}::jsonb, ${submitted_at}
+      )
+    `;
 
     return NextResponse.json({ success: true });
   } catch (err) {

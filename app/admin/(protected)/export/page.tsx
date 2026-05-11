@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { kvList } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import { AdminExport } from "@/components/admin-export";
 
 const ADMIN_SESSION_COOKIE = "admin_session";
@@ -10,25 +10,20 @@ async function isAuthenticated(): Promise<boolean> {
   return !!cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
 }
 
-async function getCount(prefix: string): Promise<number> {
-  try {
-    const keys = await kvList(prefix);
-    return keys.length;
-  } catch {
-    return 0;
-  }
-}
-
 export default async function ExportPage() {
   if (!(await isAuthenticated())) {
     redirect("/admin/login");
   }
 
-  const [respondentCount, responseCount, paymentCount] = await Promise.all([
-    getCount("respondent:"),
-    getCount("response:"),
-    getCount("payment:"),
+  const sql = getSql();
+  const [respondentRows, responseRows, paymentRows] = await Promise.all([
+    sql`SELECT COUNT(*)::int AS n FROM respondents`.catch(() => [{ n: 0 }]),
+    sql`SELECT COUNT(*)::int AS n FROM responses`.catch(() => [{ n: 0 }]),
+    sql`SELECT COUNT(*)::int AS n FROM payments`.catch(() => [{ n: 0 }]),
   ]);
+  const respondentCount = (respondentRows[0]?.n as number) ?? 0;
+  const responseCount = (responseRows[0]?.n as number) ?? 0;
+  const paymentCount = (paymentRows[0]?.n as number) ?? 0;
 
   return (
     <div className="mx-auto max-w-2xl p-8">

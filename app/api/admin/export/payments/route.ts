@@ -1,34 +1,14 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { kvGetAll } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import { toCsv } from "@/lib/csv";
 
 
 const ADMIN_SESSION_COOKIE = "admin_session";
 
-interface PaymentRecord {
-  payment_id?: string;
-  respondent_id: string;
-  payment_method?: string;
-  payment_account?: string;
-  payee_name?: string;
-  amount?: number;
-  is_drawn?: boolean;
-  drawn_at?: string;
-  is_submitted?: boolean;
-  submitted_at?: string;
-  created_at?: string;
-}
-
 async function isAuthenticated(): Promise<boolean> {
   const cookieStore = await cookies();
   return !!cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
-}
-
-async function fetchAllPayments(): Promise<PaymentRecord[]> {
-  const results = await kvGetAll<PaymentRecord>("payment:");
-  results.sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
-  return results;
 }
 
 export async function GET() {
@@ -37,20 +17,26 @@ export async function GET() {
   }
 
   try {
-    const payments = await fetchAllPayments();
+    const sql = getSql();
+    const payments = await sql`SELECT * FROM payments ORDER BY drawn_at`;
 
     const rows = payments.map((p) => ({
       payment_id: p.payment_id ?? "",
       respondent_id: p.respondent_id,
+      fixed_amount: p.fixed_amount ?? "",
+      lottery_block: p.lottery_block ?? "",
+      lottery_row: p.lottery_row ?? "",
+      lottery_choice: p.lottery_choice ?? "",
+      lottery_payout: p.lottery_payout ?? "",
+      comp_drawn_cell: p.comp_drawn_cell ?? "",
+      comp_bonus: p.comp_bonus ?? "",
+      total_payout: p.total_payout ?? "",
+      drawn_at: p.drawn_at ?? "",
+      is_submitted: p.is_submitted ?? "",
       payment_method: p.payment_method ?? "",
       payment_account: p.payment_account ?? "",
       payee_name: p.payee_name ?? "",
-      amount: p.amount ?? "",
-      is_drawn: p.is_drawn ?? "",
-      drawn_at: p.drawn_at ?? "",
-      is_submitted: p.is_submitted ?? "",
       submitted_at: p.submitted_at ?? "",
-      created_at: p.created_at ?? "",
     }));
 
     const csv = toCsv(rows);

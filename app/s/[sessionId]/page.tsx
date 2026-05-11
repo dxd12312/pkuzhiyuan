@@ -1,4 +1,4 @@
-import { kvGet } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import SurveyShell from "@/components/survey-shell";
 import EntryForm from "@/components/entry-form";
 import type { Session } from "@/lib/types";
@@ -12,7 +12,16 @@ export default async function SessionEntryPage({ params }: Props) {
 
   let session: Session | null = null;
   try {
-    session = await kvGet<Session>(`session:${sessionId}`);
+    const sql = getSql();
+    const rows = await sql`SELECT * FROM sessions WHERE session_id = ${sessionId}`;
+    if (rows.length > 0) {
+      session = {
+        ...rows[0],
+        college_preset: Array.isArray(rows[0].college_preset)
+          ? rows[0].college_preset
+          : JSON.parse((rows[0].college_preset as string) ?? "[]"),
+      } as Session;
+    }
   } catch {
     // Fall through to error state
   }

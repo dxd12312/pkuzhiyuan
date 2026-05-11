@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { kvGet, kvPut } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import { COOKIE_NAME } from "@/lib/constants";
-import type { Payment } from "@/lib/types";
 
 
 export async function POST(req: NextRequest) {
@@ -25,21 +24,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "missing_fields" }, { status: 400 });
     }
 
-    const payment = await kvGet<Payment>(`payment:${respondent_id}`);
-    if (!payment) {
+    const sql = getSql();
+
+    const existing = await sql`SELECT payment_id FROM payments WHERE respondent_id = ${respondent_id}`;
+    if (existing.length === 0) {
       return NextResponse.json({ error: "payment_not_found" }, { status: 404 });
     }
 
-    const updated: Payment = {
-      ...payment,
-      payment_method: method,
-      payment_account: account,
-      payee_name,
-      is_submitted: true,
-      submitted_at: new Date().toISOString(),
-    };
-
-    await kvPut(`payment:${respondent_id}`, updated);
+    await sql`
+      UPDATE payments
+      SET payment_method = ${method},
+          payment_account = ${account},
+          payee_name = ${payee_name},
+          is_submitted = true,
+          submitted_at = now()
+      WHERE respondent_id = ${respondent_id}
+    `;
 
     return NextResponse.json({ success: true });
   } catch (err) {

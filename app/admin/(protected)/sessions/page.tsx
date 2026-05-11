@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { kvGetAll } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import AdminSessionList from "@/components/admin-session-list";
 import type { Session } from "@/lib/types";
 
@@ -15,8 +15,14 @@ export default async function AdminSessionsPage() {
 
   let sessions: Session[] = [];
   try {
-    sessions = await kvGetAll<Session>("session:");
-    sessions.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const sql = getSql();
+    const rows = await sql`SELECT * FROM sessions ORDER BY created_at DESC`;
+    sessions = rows.map((r) => ({
+      ...r,
+      college_preset: Array.isArray(r.college_preset)
+        ? r.college_preset
+        : JSON.parse((r.college_preset as string) ?? "[]"),
+    })) as Session[];
   } catch {
     // Render with empty list; API errors surface in client component
   }

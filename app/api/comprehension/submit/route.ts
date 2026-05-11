@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { kvGet, kvPut } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import { COOKIE_NAME } from "@/lib/constants";
 import type { CellId } from "@/lib/types";
 
@@ -44,10 +44,12 @@ export async function POST(req: NextRequest) {
 
     const comp_correct = answer === CORRECT_ANSWERS[cell_id];
 
-    const existing = await kvGet<Record<string, unknown>>(`response:${respondent_id}:${cell_id}`);
-    if (existing) {
-      await kvPut(`response:${respondent_id}:${cell_id}`, { ...existing, comp_answer: answer, comp_correct });
-    }
+    const sql = getSql();
+    await sql`
+      UPDATE responses
+      SET comp_answer = ${answer}, comp_correct = ${comp_correct}
+      WHERE respondent_id = ${respondent_id} AND cell_id = ${cell_id}
+    `;
 
     return NextResponse.json({ success: true, correct: comp_correct });
   } catch (err) {

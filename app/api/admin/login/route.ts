@@ -1,22 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
-import { kvGet, kvPut, kvDelete } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 
 
 const MAX_ATTEMPTS = 10;
-const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const BLOCK_MINUTES = 15;
 
-interface Admin {
+interface AdminRow {
   admin_id: string;
   username: string;
   password_hash: string;
-}
-
-interface LoginAttempt {
-  ip: string;
-  count: number;
-  window_start: string;
 }
 
 function getClientIp(req: NextRequest): string {
@@ -29,19 +23,19 @@ function getClientIp(req: NextRequest): string {
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
+  const sql = getSql();
 
   // Rate-limit check
   try {
-    const record = await kvGet<LoginAttempt>(`login_attempt:${ip}`);
-    if (record) {
-      const windowStart = new Date(record.window_start).getTime();
-      const now = Date.now();
-      if (now - windowStart < WINDOW_MS && record.count >= MAX_ATTEMPTS) {
+    const rows = await sql`SELECT attempt_count, blocked_until FROM login_attempts WHERE ip_address = ${ip}`;
+    if (rows.length > 0) {
+      const row = rows[0];
+      if (row.blocked_until && new Date(row.blocked_until as string) > new Date()) {
         return NextResponse.json({ error: "请求过于频繁，请稍后再试" }, { status: 429 });
       }
     }
   } catch {
-    // Non-fatal: proceed without rate-limit if KV unavailable
+    // Non-fatal: proceed without rate-limit if DB unavailable
   }
 
   // Parse body
@@ -60,28 +54,36 @@ export async function POST(req: NextRequest) {
   }
 
   // Lookup admin
-  let admin: Admin | null = null;
+  let admin: AdminRow | null = null;
   try {
-    admin = await kvGet<Admin>(`admin:${username}`);
+    const rows = await sql`SELECT admin_id, username, password_hash FROM admins WHERE username = ${username}`;
+    admin = rows.length > 0 ? (rows[0] as AdminRow) : null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 
   if (!admin) {
-    await recordAttempt(ip);
+    await recordAttempt(ip, BLOCK_MINUTES);
     return NextResponse.json({ error: "用户名或密码错误" }, { status: 401 });
   }
 
   const valid = await bcrypt.compare(password, admin.password_hash);
   if (!valid) {
-    await recordAttempt(ip);
+    await recordAttempt(ip, BLOCK_MINUTES);
     return NextResponse.json({ error: "用户名或密码错误" }, { status: 401 });
   }
 
   // Clear failed attempts on success
   try {
-    await kvDelete(`login_attempt:${ip}`);
+    await sql`DELETE FROM login_attempts WHERE ip_address = ${ip}`;
+  } catch {
+    // Non-fatal
+  }
+
+  // Update last_login_at
+  try {
+    await sql`UPDATE admins SET last_login_at = now() WHERE admin_id = ${admin.admin_id}`;
   } catch {
     // Non-fatal
   }
@@ -108,18 +110,20 @@ export async function POST(req: NextRequest) {
   return response;
 }
 
-async function recordAttempt(ip: string): Promise<void> {
+async function recordAttempt(ip: string, blockMinutes: number): Promise<void> {
   try {
-    const existing = await kvGet<LoginAttempt>(`login_attempt:${ip}`);
-    const now = new Date().toISOString();
-    if (existing) {
-      await kvPut(`login_attempt:${ip}`, {
-        ...existing,
-        count: existing.count + 1,
-      });
-    } else {
-      await kvPut(`login_attempt:${ip}`, { ip, count: 1, window_start: now });
-    }
+    const sql = getSql();
+    await sql`
+      INSERT INTO login_attempts (ip_address, attempt_count, first_attempt_at, blocked_until)
+      VALUES (${ip}, ${1}, now(), null)
+      ON CONFLICT (ip_address) DO UPDATE SET
+        attempt_count = login_attempts.attempt_count + 1,
+        blocked_until = CASE
+          WHEN login_attempts.attempt_count + 1 >= ${MAX_ATTEMPTS}
+          THEN now() + (${blockMinutes} || ' minutes')::interval
+          ELSE null
+        END
+    `;
   } catch {
     // Non-fatal
   }

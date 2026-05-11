@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { kvGet, kvPut } from "@/lib/kv";
-import type { Session } from "@/lib/types";
+import { getSql } from "@/lib/db";
 
 
 const ADMIN_SESSION_COOKIE = "admin_session";
@@ -26,12 +25,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "session_id and is_active required" }, { status: 400 });
     }
 
-    const session = await kvGet<Session>(`session:${session_id}`);
-    if (!session) {
+    const sql = getSql();
+
+    const existing = await sql`SELECT session_id FROM sessions WHERE session_id = ${session_id}`;
+    if (existing.length === 0) {
       return NextResponse.json({ error: "session not found" }, { status: 404 });
     }
 
-    await kvPut(`session:${session_id}`, { ...session, is_active });
+    await sql`UPDATE sessions SET is_active = ${is_active} WHERE session_id = ${session_id}`;
 
     return NextResponse.json({ ok: true, session_id, is_active });
   } catch (err) {

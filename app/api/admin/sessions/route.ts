@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { kvGetAll, kvPut } from "@/lib/kv";
+import { getSql } from "@/lib/db";
 import type { Session } from "@/lib/types";
 
 
@@ -12,18 +12,20 @@ async function isAuthenticated(): Promise<boolean> {
   return !!cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
 }
 
-function generateSessionId(): string {
-  return crypto.randomUUID();
-}
-
 export async function GET() {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   try {
-    const sessions = await kvGetAll<Session>("session:");
-    sessions.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const sql = getSql();
+    const rows = await sql`SELECT * FROM sessions ORDER BY created_at DESC`;
+    const sessions = rows.map((r) => ({
+      ...r,
+      college_preset: Array.isArray(r.college_preset)
+        ? r.college_preset
+        : JSON.parse((r.college_preset as string) ?? "[]"),
+    })) as Session[];
     return NextResponse.json({ sessions });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -51,24 +53,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "province and version are required" }, { status: 400 });
     }
 
-    const session_id = generateSessionId();
+    const session_id = crypto.randomUUID();
     const entry_url = `${BASE_URL}/s/${session_id}`;
-    const created_at = new Date().toISOString();
+    const preset = college_preset ?? [];
 
-    const session: Session = {
-      session_id,
-      province,
-      school_name: school_name ?? "",
-      version,
-      college_preset: college_preset ?? [],
-      score_threshold,
-      created_by: "admin",
-      created_at,
-      is_active: true,
-      entry_url,
-    };
+    const sql = getSql();
+    await sql`
+      INSERT INTO sessions (session_id, province, school_name, version, college_preset, score_threshold, created_by, is_active, entry_url)
+      VALUES (
+        ${session_id}, ${province}, ${school_name ?? ""},
+        ${version}, ${JSON.stringify(preset)}::jsonb,
+        ${score_threshold ?? null}, ${"admin"}, ${true}, ${entry_url}
+      )
+    `;
 
-    await kvPut(`session:${session_id}`, session);
+    const rows = await sql`SELECT * FROM sessions WHERE session_id = ${session_id}`;
+    const session = {
+      ...rows[0],
+      college_preset: Array.isArray(rows[0].college_preset)
+        ? rows[0].college_preset
+        : JSON.parse((rows[0].college_preset as string) ?? "[]"),
+    } as Session;
 
     return NextResponse.json({ session }, { status: 201 });
   } catch (err) {
